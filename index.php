@@ -1,342 +1,281 @@
 <?php
+session_start();
+
+// 1. Get group name from URL parameter or current folder name
+if (!isset($_GET['group'])) {
+    $group = basename(dirname(__FILE__));
+} else {
+    $group = preg_replace('/[^a-zA-Z0-9]/', '', $_GET['group']);
+}
+
+// 2. Include database connection
 include("config.php");
 
-$base_url = "https://bitp3353.utem.edu.my/2026/all/";
+// 3. Retrieve full_name and matric_no using INNER JOIN
+$members = [];
+$sql = "SELECT S.full_name, S.matric_no
+        FROM stu S
+        INNER JOIN groupdb G
+            ON S.group_no = G.groupID
+        WHERE G.groupID = ?";
 
-$where = "WHERE 1=1";
+if ($stmt = $conn->prepare($sql)) {
 
-if (!empty($_GET['file_type'])) {
-    $file_type = mysqli_real_escape_string($conn, $_GET['file_type']);
-    $where .= " AND image.file_type = '$file_type'";
+    $stmt->bind_param("s", $group);
+    $stmt->execute();
+
+    $result = $stmt->get_result();
+
+    while ($row = $result->fetch_assoc()) {
+        $members[] = $row;
+    }
+
+    $stmt->close();
 }
 
-if (!empty($_GET['description'])) {
-    $description = mysqli_real_escape_string($conn, $_GET['description']);
-    $where .= " AND image.image_description LIKE '%$description%'";
-}
-
-if (!empty($_GET['category'])) {
-    $category = mysqli_real_escape_string($conn, $_GET['category']);
-    $where .= " AND category.category_name = '$category'";
-}
-
-$sql = "SELECT 
-            image.*, 
-            category.category_name,
-            photographer.photographer_name
-        FROM image
-        LEFT JOIN category 
-            ON image.category_id = category.category_id
-        LEFT JOIN photographer
-            ON image.photographer_id = photographer.photographer_id
-        $where
-        ORDER BY image.upload_date DESC";
-
-$result = mysqli_query($conn, $sql);
-
-if (!$result) {
-    die("SQL Error: " . mysqli_error($conn));
-}
+$conn->close();
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>PhotoSphere</title>
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background:#111827;
-            color:white;
-            margin:0;
-        }
+<meta charset="UTF-8">
+<title>Group Members | <?php echo htmlspecialchars($group); ?></title>
 
-        header {
-            background:#020617;
-            padding:25px 35px;
-            border-bottom:1px solid #1e293b;
-        }
+<style>
 
-        header h1 {
-            margin:0;
-            font-size:30px;
-            letter-spacing:2px;
-        }
+body{
+    background:#0f0f0f;
+    color:white;
+    font-family:Arial,Helvetica,sans-serif;
+    padding:40px;
+}
 
-        .upload-banner{
-            background:#020617;
-            border:1px solid #1e293b;
-            border-radius:16px;
-            padding:25px 30px;
-            margin:30px;
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-        }
+.header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom:2px solid #333;
+    padding-bottom:20px;
+    margin-bottom:40px;
+}
 
-        .upload-banner h3 {
-            margin:0;
-            font-size:22px;
-        }
+.table-container{
+    border:1px solid #444;
+    border-radius:12px;
+    overflow:hidden;
+    background:rgba(255,255,255,.02);
+}
 
-        .upload-banner p{
-            color:#94a3b8;
-            margin:8px 0 0;
-        }
+table{
+    width:100%;
+    border-collapse:collapse;
+    text-align:left;
+}
 
-        .upload-btn {
-            background:#4f46e5;
-            color:white;
-            padding:14px 24px;
-            border-radius:10px;
-            font-weight:bold;
-            text-decoration:none;
-        }
+th,
+td{
+    padding:22px 30px;
+    border-bottom:1px solid #333;
+    font-size:1.3rem;
+}
 
-        .upload-btn:hover {
-            background:#6366f1;
-        }
+th{
+    background:#161616;
+    color:#00d2ff;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    font-size:1.2rem;
+}
 
-        .container {
-            padding:0 30px 30px;
-        }
+tr:last-child td{
+    border-bottom:none;
+}
 
-        .filter-box {
-            background:#020617;
-            padding:28px;
-            border-radius:16px;
-            border:1px solid #1e293b;
-            margin-bottom:28px;
-        }
+tr:hover{
+    background:rgba(255,255,255,.05);
+    transition:.2s;
+}
 
-        .filter-box h2 {
-            margin-top:0;
-        }
+.text-break{
+    word-break:break-word;
+    line-height:1.5;
+    font-size:1.35rem;
+    font-weight:500;
+}
 
-        .filter-form {
-            display:flex;
-            align-items:end;
-            gap:18px;
-            flex-wrap:wrap;
-        }
+.matrix-code{
+    color:#00d2ff;
+    font-family:monospace;
+    font-weight:bold;
+    font-size:1.4rem;
+}
 
-        .filter-group {
-            display:flex;
-            flex-direction:column;
-            gap:8px;
-        }
+.bil-col{
+    font-size:1.3rem;
+    font-weight:bold;
+}
 
-        .filter-group label {
-            font-size:13px;
-            color:#9ca3af;
-            font-weight:bold;
-        }
+.button-group{
+    display:flex;
+    gap:15px;
+    margin-top:40px;
+}
 
-        .filter-group input,
-        .filter-group select {
-            min-width:190px;
-            padding:12px;
-            border-radius:8px;
-            border:none;
-        }
+.btn-back,
+.btn-project{
 
-        .search-btn {
-            background:#4f46e5;
-            color:white;
-            padding:12px 24px;
-            border-radius:8px;
-            border:none;
-            cursor:pointer;
-            font-weight:bold;
-        }
+    display:inline-block;
+    padding:14px 30px;
+    border-radius:8px;
+    text-decoration:none;
+    font-weight:bold;
+    font-size:1.1rem;
+    transition:.3s;
 
-        .reset-btn {
-            color:#818cf8;
-            padding:12px 0;
-            text-decoration:none;
-        }
+}
 
-        .grid {
-            display:grid;
-            grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));
-            gap:22px;
-        }
+.btn-back{
 
-        .card {
-            background:#020617;
-            border:1px solid #1e293b;
-            padding:18px;
-            border-radius:16px;
-            transition:0.3s;
-        }
+    background:#555;
+    color:white;
 
-        .card:hover {
-            border-color:#4f46e5;
-            transform:translateY(-3px);
-        }
+}
 
-        .image-box {
-            width:100%;
-            height:280px;
-            background:#111827;
-            border-radius:14px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            overflow:hidden;
-            margin-bottom:15px;
-        }
+.btn-back:hover{
 
-        .image-box img {
-            width:100%;
-            height:100%;
-            object-fit:contain;
-        }
+    background:#666;
 
-      
-        .card h3 {
-            margin:10px 0;
-            font-size:20px;
-        }
+}
 
-        .card p {
-            color:#cbd5e1;
-            font-size:14px;
-        }
+.btn-project{
 
-        .badge {
-            display:inline-block;
-            padding:5px 12px;
-            background:#1e3a8a;
-            border-radius:20px;
-            font-size:12px;
-            color:#bfdbfe;
-        }
+    background:#00d2ff;
+    color:#111827;
 
-        .empty {
-            color:#9ca3af;
-            text-align:center;
-            grid-column:1/-1;
-            padding:40px;
-            background:#020617;
-            border-radius:16px;
-            border:1px solid #1e293b;
-        }
-    </style>
+}
+
+.btn-project:hover{
+
+    background:#00b8e6;
+
+}
+
+</style>
+
 </head>
 
 <body>
 
-<header>
-    <h1>PHOTOSPHERE</h1>
-</header>
+<div class="header">
 
-<div class="upload-banner">
-    <div>
-        <h3>📤 Upload New Photo</h3>
-        <p>Add new images for ABR, TBR and CBR retrieval.</p>
+    <h1>SENARAI AHLI KUMPULAN</h1>
+
+    <div style="
+        border:1px solid #00d2ff;
+        padding:10px 25px;
+        font-size:1.6rem;
+        border-radius:5px;
+        font-weight:bold;
+    ">
+        GROUP: <?php echo htmlspecialchars($group); ?>
     </div>
 
-    <a href="upload.php" class="upload-btn">Upload Photo</a>
 </div>
 
-<div class="container">
+<div class="table-container">
 
-    <div class="filter-box">
-        <h2>Retrieval Search</h2>
+<table>
 
-        <form method="GET" class="filter-form">
+<thead>
 
-            <div class="filter-group">
-                <label>ABR - File Type</label>
-                <select name="file_type">
-                    <option value="">All</option>
-                    <option value="jpg">JPG</option>
-                    <option value="jpeg">JPEG</option>
-                    <option value="png">PNG</option>
-                </select>
-            </div>
+<tr>
 
-            <div class="filter-group">
-                <label>TBR - Description</label>
-                <input type="text" name="description" placeholder="sunset, wedding, beach">
-            </div>
+<th style="width:100px;">BIL</th>
 
-            <div class="filter-group">
-                <label>CBR - Indoor / Outdoor</label>
-                <select name="category">
-                    <option value="">All</option>
-                    <option value="Indoor">Indoor</option>
-                    <option value="Outdoor">Outdoor</option>
-                </select>
-            </div>
+<th>NAMA PENUH</th>
 
-            <button type="submit" class="search-btn">Search</button>
-            <a href="index.php" class="reset-btn">Reset</a>
+<th style="width:350px;">NO. MATRIK</th>
 
-        </form>
-    </div>
+</tr>
 
-    <div class="grid">
+</thead>
 
-        <?php if (mysqli_num_rows($result) == 0) { ?>
-            <div class="empty">No images found.</div>
-        <?php } ?>
+<tbody>
 
-        <?php while($row = mysqli_fetch_assoc($result)) { ?>
+<?php if(empty($members)){ ?>
 
-            <?php
-            $img = $row['file_name'] ?? '';
-            $img_src = '';
+<tr>
 
-            if (!empty($img)) {
-                if (strpos($img, 'http://') === 0 || strpos($img, 'https://') === 0) {
-                    $img_src = $img;
-                } elseif (file_exists(__DIR__ . "/" . $img)) {
-                    $img_src = $img;
-                } elseif (strpos($img, 'uploads/') === 0) {
-                    $img_src = $base_url . $img;
-                } else {
-                    $img_src = $img;
-                }
-            }
+<td colspan="3"
+    style="
+        text-align:center;
+        color:#ff4444;
+        padding:40px;
+        font-size:1.4rem;
+    ">
 
-            $title = !empty($row['image_title'])
-            ? $row['image_title']
-            : (!empty($row['photographer_name'])
-                ? $row['photographer_name']
-                : 'Untitled Photo');      
-            $desc = !empty($row['image_description']) ? $row['image_description'] : 'No description';
-            $type = !empty($row['file_type']) ? $row['file_type'] : '-';
-            $category = !empty($row['category_name']) ? $row['category_name'] : 'Uncategorized';
-            $date = !empty($row['upload_date']) ? $row['upload_date'] : '-';
-            ?>
+    Tiada data ahli kumpulan ditemui untuk kod group
+    "<?php echo htmlspecialchars($group); ?>".
 
-            <div class="card">
+</td>
 
-                <div class="image-box">
-                    <?php if (!empty($img_src)) { ?>
-                        <img src="<?php echo htmlspecialchars($img_src); ?>"
-                             alt="Photo"
-                             onerror="this.src='https://via.placeholder.com/300x200?text=No+Image';">
-                    <?php } else { ?>
-                        <img src="https://via.placeholder.com/300x200?text=No+Image">
-                    <?php } ?>
-                </div>
+</tr>
 
-                
-                <h3><?php echo htmlspecialchars($title); ?></h3>
-                <p><?php echo htmlspecialchars($desc); ?></p>
-                <p><b>Type:</b> <?php echo htmlspecialchars($type); ?></p>
-                <p><b>Category:</b> <span class="badge"><?php echo htmlspecialchars($category); ?></span></p>
-                <p><b>Date:</b> <?php echo htmlspecialchars($date); ?></p>
+<?php } else { ?>
 
-            </div>
+<?php foreach($members as $index=>$row){ ?>
 
-        <?php } ?>
+<tr>
 
-    </div>
+<td class="bil-col">
+
+<?php echo $index+1; ?>
+
+</td>
+
+<td class="text-break" style="text-transform:uppercase;">
+
+<?php echo htmlspecialchars($row['full_name']); ?>
+
+</td>
+
+<td class="matrix-code">
+
+<?php echo htmlspecialchars($row['matric_no']); ?>
+
+</td>
+
+</tr>
+
+<?php } ?>
+
+<?php } ?>
+
+</tbody>
+
+</table>
+
+</div>
+
+<div class="button-group">
+
+    <!-- Back to Dashboard (Current Group) -->
+    <a href="../../dashboard.php?group=<?php echo urlencode($group); ?>"
+       class="btn-back">
+
+        BACK TO DASHBOARD
+
+    </a>
+
+    <!-- Go to Main Project Dashboard -->
+    <a href="../../dashboard.php"
+       class="btn-project">
+
+        GO TO PROJECT
+
+    </a>
 
 </div>
 
